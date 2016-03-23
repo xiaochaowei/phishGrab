@@ -1,3 +1,4 @@
+import sys
 import time 
 import os
 import datetime
@@ -94,7 +95,7 @@ def grabPhishtank():
 	global API_KEYS
 	#TIME DIFFERENT NEED TO CONSDIER 
 	url = "http://data.phishtank.com/data/"+API_KEY+"/online-valid.csv"
-	print "get data from PhishTank!"
+	sys.stdout.write("get data from PhishTank!")
 	r = requests.post(url)
 	print r.status_code
 	if r.status_code == 200:
@@ -132,7 +133,7 @@ def updateUrlList():
 	print "updateUrlList"
 	while 1:
 		today = datetime.date.today().strftime("%Y-%m-%d")
-		floder_dir = "/Users/chaoweixiao/phish_data/" + today + "/"
+		floder_dir = "/home/xiaocw/phish_data/" + today + "/"
 		print floder_dir
 		if not os.path.exists(floder_dir):
 			os.mkdir(floder_dir)
@@ -144,7 +145,7 @@ def updateUrlList():
 		mylock.release()
 		print rows
 		if len(rows) == 0:
-			print "queue vacant, wait for a minutes!"
+			sys.stdout.write("queue vacant, wait for a minutes!")
 			time.sleep(600)
 		for row in rows:
 			url_tmp = row[1][row[1].find("//")+2:]
