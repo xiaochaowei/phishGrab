@@ -3,7 +3,7 @@ import time
 import os
 import datetime
 # invaild_str = "<html><head></head><body></body></html>"
-# from selenium import webdriver
+from selenium import webdriver
 import requests
 import MySQLdb
 import urllib2
@@ -12,7 +12,10 @@ import thread
 import time
 import socket
 import random
-# driver = webdriver.PhantomJS(executable_path = "./phantomjs") 
+import gzip
+from StringIO import StringIO
+
+driver = webdriver.PhantomJS(executable_path = "./phantomjs") 
 API_KEYS = [\
 "7ceda52f14d52c6ed8ba56f45b2e7587fc423d467e7335d11473e1a795897d2c",\
 "4e302260ddab4da32760226c56e1a00e8f7e0a25a1f96f8bbf7e85ce81e67f1e",\
@@ -101,15 +104,14 @@ def grabPhishtank():
 	if r.status_code == 200:
 		comment_sql = "SELECT distinct max(phish_id) from phishSite"
 		cursor.execute(comment_sql)
- 		max_store = cursor.fetchone()[0]
- 		if max_store == None:
- 			max_store = 0
- 		print max_store
+		max_store = cursor.fetchone()[0]
+		if max_store == None:
+			max_store = 0
 		saveNewData(r.text, max_store)
 		time.sleep(60 * 60)
 	else:
 		API_KEY = API_KEYS[random.randrange(0,len(API_KEYS))]
-		time.sleep(10 * 60)
+		time.sleep(60)
 
 # only for test
 	# fid = open("result.txt","r")
@@ -118,23 +120,14 @@ def grabPhishtank():
 	# comment_sql = "SELECT distinct max(phish_id) from phishSite ;"
 	# mylock.acquire()
 	# cursor.execute(comment_sql)
- 	# max_store = cursor.fetchone()[0]
- 	# mylock.release()
+	# max_store = cursor.fetchone()[0]
+	# mylock.release()
 	# saveNewData(data, max_store)
-
-# def unit_test():
-# 	while(1):
-# 		grabPhishtank()
-# 		time.sleep(60 * 60)
-
-
-
 def updateUrlList():
-	print "updateUrlList"
 	while 1:
 		today = datetime.date.today().strftime("%Y-%m-%d")
-		floder_dir = "/home/xiaocw/phish_data/" + today + "/"
-		print floder_dir
+		sys.stdout.write("garb data at " + today + "\n")
+		floder_dir = "phish_data/" + today + "/"
 		if not os.path.exists(floder_dir):
 			os.mkdir(floder_dir)
 			print "mkdir success!"
@@ -143,25 +136,40 @@ def updateUrlList():
 		cursor.execute(comment_sql)
 		rows = cursor.fetchall()
 		mylock.release()
-		print rows
 		if len(rows) == 0:
-			sys.stdout.write("queue vacant, wait for a minutes!")
-			time.sleep(600)
+			sys.stdout.write("queue vacant, wait for a minutes!\n")
+			time.sleep(10*60)
 		for row in rows:
+			sys.stdout.flush()
 			url_tmp = row[1][row[1].find("//")+2:]
-			print url_tmp[:url_tmp.find('/')]
 			try:
 				ip = socket.gethostbyname(url_tmp[:url_tmp.find('/')])
-				comment_sql = UPDATE_URL.format(grab = 1, phish_id = row[0], ip = ip)
-				mylock.acquire()
-				cursor.execute(comment_sql)
+				sys.stdout.write("success solve: " + url_tmp[:url_tmp.find('/')] + "\n")
 				phish_id = row[0]
 				url = row[1]
-				if urlcrawl(floder_dir, phish_id, url):
+				r = requests.get(url, timeout = 10)
+				if not r.status_code == 200:
+					sys.stdout.write("status_code not 200" + row[1] + "\n")
+					mylock.acquire()
+					comment_sql = UPDATE_URL.format(grab = -3, phish_id = row[0], ip = "")
+					cursor.execute(comment_sql)
 					conn.commit()
-				mylock.release()
+					mylock.release()
+				if urlcrawlDriver(floder_dir, phish_id, url):
+					comment_sql = UPDATE_URL.format(grab = 1, phish_id = phish_id, ip = ip)
+					mylock.acquire()
+					cursor.execute(comment_sql)
+					conn.commit()
+					mylock.release()
+				else:
+					sys.stdout.write("grab html failed," + row[1] + "\n")
+					mylock.acquire()
+					comment_sql = UPDATE_URL.format(grab = -2, phish_id = row[0], ip = "")
+					cursor.execute(comment_sql)
+					conn.commit()
+					mylock.release()
 			except:
-				print "solve ip failed", row[1]
+				sys.stdout.write("solve ip failed," + row[1] + "\n")
 				mylock.acquire()
 				comment_sql = UPDATE_URL.format(grab = -1, phish_id = row[0], ip = "")
 				cursor.execute(comment_sql)
@@ -179,20 +187,43 @@ def urlcrawl(floder_dir, phish_id,  url):
 		req_timeout = 5
 		req = urllib2.Request(url, None, req_header)
 		resp = urllib2.urlopen(req, None, req_timeout)
-		source = resp.read()
-		savePage(floder_dir, phish_id, source)
+		if resp.headers.get('content-encoding') == "gzip":
+			print url
+			buf = StringIO(resp.read())
+			f = gzip.GzipFile(fileobj = buf)
+			source = f.read()
+		else:
+			source = resp.read()
+		savePage(floder_dir, str(phish_id), source)
 		return True
 	except:
+		print sys.exc_info()
 		return False
 
+def urlcrawlDriver(floder_dir, phish_id, url):
+	try:
+		driver.get(url)
+		source = driver.page_source
+		savePage(floder_dir, str(phish_id), source.encode('utf-8'))
+		sys.stdout.write("save successfull\n")
+		return True
+	except:
+		sys.stdout.write("save failed\n")
+		sys.stdout.write(sys.exc_info())
+		return False
 
 def savePage(save_path, file_name, content):
-	print "save file: ",save_path + file_name 
-	fid = open(save_path + file_name + ".html", 'w')
-	fid.write(content.encode("utf-8"))
-	fid.close()
+	try:
+		full_filename = save_path + file_name + ".html"
+		fid = open(full_filename, 'w')
+		fid.write(content)
+		fid.close()
+		driver.save_screenshot(full_filename[:-5] + ".jpg")
+	except:
+		sys.stdout.write(sys.exc_info()+"\n")
 
 if __name__ == "__main__":
 	thread.start_new_thread(updateUrlList,())
 	while(1):
 		grabPhishtank()
+		pass
