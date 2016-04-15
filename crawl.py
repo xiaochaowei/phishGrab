@@ -155,7 +155,8 @@ def updateUrlList():
 					cursor.execute(comment_sql)
 					conn.commit()
 					mylock.release()
-				if urlcrawlDriver(floder_dir, phish_id, url):
+					continue
+				if urlcrawlDriver(floder_dir, phish_id,u url):
 					comment_sql = UPDATE_URL.format(grab = 1, phish_id = phish_id, ip = ip)
 					mylock.acquire()
 					cursor.execute(comment_sql)
