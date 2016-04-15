@@ -4,6 +4,7 @@ import MySQLdb
 import gzip
 from StringIO import StringIO
 import sys
+import datetime
 conn = MySQLdb.connect(user = "root", passwd = "19920930", db = "PhishTank")
 cursor = conn.cursor()
 SELECTSQL = """ SELECT phish_id  FROM phishSite WHERE phish_id = "{phish_id}" ; """
@@ -12,7 +13,7 @@ UPDATESQL = """ UPDATE phishSite SET expire_date = "{expire_date}", online = "no
 def extractDate(date_str):
 	tmp = date_str.split(" ")
 	date_format = """{month} {day} {year}"""
-	return datetime.datetime.strptime(date_format.format(month = tmp[0], day = tmp[1][:-2], year = tmp[2]), "%b %m %Y").strftime("%Y-%m-%d")
+	return datetime.datetime.strptime(date_format.format(month = tmp[2], day = tmp[3][:-2], year = tmp[4]), "%b %d %Y").strftime("%Y-%m-%d")
 
 def urlcrawl(url_prefix, url_surffix):
 	url = url_prefix + url_surffix
@@ -39,7 +40,7 @@ def urlcrawl(url_prefix, url_surffix):
 		for i in range(1,len(item)):
 			ins = item[i].find_all('td')
 			phish_id = ins[0].a.contents[0]
-			submission_time = extractDate(ins[1].contents[2])
+			submission_time = extractDate(ins[1].span.contents[0])
 			url = ins[1].contents[0]
 			comment_sql = SELECTSQL.format(phish_id = phish_id)
 			cursor.execute(comment_sql)
@@ -56,9 +57,9 @@ def urlcrawl(url_prefix, url_surffix):
 	except urllib2.URLError as e:
 		print "forbbiden"
 		time.sleep(10*60)
-	except Exception as e:
-		print e
-	# 	print sys.exc_info()
+	except:
+		# print e
+		print sys.exc_info()
 	# 	return False
 url = "https://www.phishtank.com/phish_search.php"
 surffix = "?valid=y&active=n&Search=Search"
