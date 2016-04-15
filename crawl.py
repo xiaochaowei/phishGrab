@@ -41,6 +41,30 @@ SELECT_URL = """SELECT phish_id, url  FROM phishSite where submission_time = "{s
 UPDATE_URL = """ UPDATE phishSite SET grab = {grab}, ip = "{ip}" WHERE phish_id={phish_id} ;"""
 time_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 mylock = thread.allocate_lock()
+
+def verifyExpire():
+	today = datetime.date.today().strftime("%Y-%m-%d")
+	VERIFY_SQL = """SELECT url,phish_id from phishSite where grab=1 and online = 'yes' ; """
+	SET_EXPIRE_SQL = """ UPDATE phishSite SET expire_date ="{expire_time}", online='no' where phish_id = {phish_id}; """
+	comment_sql = VERIFY_SQL
+	mylock.acquire()
+	cursor.execute (comment_sql)
+	rows = cursor.fetchall()
+	mylock.release()
+	for row in rows:
+		url = row[0]
+		url = url[url.find('//'):]
+		phish_id = row[1]	
+		try:
+			ip = socket.gethostbyname(url[:url.find('/')])
+		except:
+			mylock.acquire()
+			comment_sql = SET_EXPIRE_SQL.format(expire_date = today,phish_id = phish_id)
+			cursor.execute(comment_sql)
+			conn.commit()
+			mylock.release()
+	time.sleep(60*60*8)
+ 
 def saveNewData(data, max_store):
 		data_list = data.split('\n')
 		data_len = len(data_list)
@@ -156,7 +180,7 @@ def updateUrlList():
 					conn.commit()
 					mylock.release()
 					continue
-				if urlcrawlDriver(floder_dir, phish_id,u url):
+				if urlcrawlDriver(floder_dir, phish_id, url):
 					comment_sql = UPDATE_URL.format(grab = 1, phish_id = phish_id, ip = ip)
 					mylock.acquire()
 					cursor.execute(comment_sql)
@@ -225,6 +249,7 @@ def savePage(save_path, file_name, content):
 
 if __name__ == "__main__":
 	thread.start_new_thread(updateUrlList,())
+	thread.start_new_thread(verifyExpire,())
 	while(1):
 		grabPhishtank()
 		pass
